@@ -3,41 +3,41 @@
 # Variables are substituted using envsubst during deployment
 
 services:
-  blog-nginx:
+  ${PROJECT_NAME}-nginx:
     image: ${NGINX_IMAGE}
-    container_name: blog-nginx
+    container_name: ${PROJECT_NAME}-nginx
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik"
-      - "traefik.http.routers.blog.rule=Host(`${APP_DOMAIN}`)"
-      - "traefik.http.routers.blog.entrypoints=websecure"
-      - "traefik.http.routers.blog.tls.certresolver=le"
-      - "traefik.http.services.blog.loadbalancer.server.port=80"
+      - "traefik.http.routers.${PROJECT_NAME}.rule=Host(`${APP_DOMAIN}`)"
+      - "traefik.http.routers.${PROJECT_NAME}.entrypoints=websecure"
+      - "traefik.http.routers.${PROJECT_NAME}.tls.certresolver=le"
+      - "traefik.http.services.${PROJECT_NAME}.loadbalancer.server.port=80"
     volumes:
-      - blog-uploads:/var/www/html/web/app/uploads
+      - ${PROJECT_NAME}-uploads:/var/www/html/web/app/uploads
     networks:
-      - blog
+      - ${PROJECT_NAME}
       - traefik
     depends_on:
-      - blog-php
+      - ${PROJECT_NAME}-php
 
-  blog-php:
+  ${PROJECT_NAME}-php:
     image: ${PHP_IMAGE}
-    container_name: blog-php
+    container_name: ${PROJECT_NAME}-php
     restart: unless-stopped
     env_file: .env
     volumes:
-      - blog-uploads:/var/www/html/web/app/uploads
-      - /srv/backups/blog:/backup
+      - ${PROJECT_NAME}-uploads:/var/www/html/web/app/uploads
+      - /srv/backups/${PROJECT_NAME}:/backup
     networks:
-      - blog
+      - ${PROJECT_NAME}
     depends_on:
-      - blog-db
+      - ${PROJECT_NAME}-db
 
-  blog-db:
+  ${PROJECT_NAME}-db:
     image: mariadb:10.11
-    container_name: blog-db
+    container_name: ${PROJECT_NAME}-db
     platform: linux/amd64
     restart: unless-stopped
     env_file: .env
@@ -50,16 +50,16 @@ services:
       - MYSQL_TCP_PORT=3306
     command: --default-authentication-plugin=mysql_native_password --port=3306
     volumes:
-      - blog-data:/var/lib/mysql
+      - ${PROJECT_NAME}-data:/var/lib/mysql
     networks:
-      - blog
+      - ${PROJECT_NAME}
 
 volumes:
-  blog-data:
-  blog-uploads:
+  ${PROJECT_NAME}-data:
+  ${PROJECT_NAME}-uploads:
 
 networks:
-  blog:
+  ${PROJECT_NAME}:
     driver: bridge
   traefik:
     external: true
