@@ -218,6 +218,44 @@ docker compose up -d
 # Visit http://localhost:8080 to reinstall
 ```
 
+## Backups
+
+The blog automatically exports its data to `/srv/backups/blog/` for the main Ansible backup system.
+
+**What gets backed up:**
+- Database dump (SQL)
+- WordPress uploads
+
+**Schedule:**
+- **2:30 AM** - Blog exports to `/srv/backups/blog/`
+- **3:00 AM** - Main Ansible backup archives everything to Storage Box
+
+**Manual backup:**
+```bash
+# Production
+ssh root@your-server
+docker exec blog-php /usr/local/bin/backup.sh
+
+# Check backup
+ls -lh /srv/backups/blog/
+
+# View backup log
+docker exec blog-php cat /var/log/backup.log
+```
+
+**Restore from backup:**
+```bash
+# Extract backup
+cd /tmp
+tar -xzf /srv/backups/blog/backup_YYYYMMDD_HHMMSS.tar.gz
+
+# Restore database
+zcat db_YYYYMMDD_HHMMSS.sql.gz | docker exec -i blog-db mysql -u root -pPASSWORD wordpress
+
+# Restore uploads
+tar -xzf uploads_YYYYMMDD_HHMMSS.tar.gz -C /path/to/uploads/
+```
+
 ## Security
 
 - ✅ File editing disabled in production

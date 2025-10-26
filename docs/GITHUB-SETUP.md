@@ -113,6 +113,7 @@ Before first deployment:
 - [ ] GitHub Secrets added: `SSH_PRIVATE_KEY`, `DB_PASSWORD`, WordPress salts (8 keys)
 - [ ] Server infrastructure deployed via Ansible
 - [ ] Can SSH to server: `ssh deploy@hc-02.meimberg.io`
+- [ ] Project directory exists: `/srv/projects/blog`
 - [ ] Backup directory exists: `/srv/backups/blog`
 
 **Estimated setup time:** 20-25 minutes
