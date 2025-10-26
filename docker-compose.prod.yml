@@ -1,0 +1,65 @@
+# Production docker-compose.yml
+# Used by GitHub Actions deployment workflow
+# Variables are substituted using envsubst during deployment
+
+services:
+  blog-nginx:
+    image: ${NGINX_IMAGE}
+    container_name: blog-nginx
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik"
+      - "traefik.http.routers.blog.rule=Host(`${APP_DOMAIN}`)"
+      - "traefik.http.routers.blog.entrypoints=websecure"
+      - "traefik.http.routers.blog.tls.certresolver=le"
+      - "traefik.http.services.blog.loadbalancer.server.port=80"
+    volumes:
+      - blog-uploads:/var/www/html/web/app/uploads
+    networks:
+      - blog
+      - traefik
+    depends_on:
+      - blog-php
+
+  blog-php:
+    image: ${PHP_IMAGE}
+    container_name: blog-php
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - blog-uploads:/var/www/html/web/app/uploads
+      - /srv/backups/blog:/backup
+    networks:
+      - blog
+    depends_on:
+      - blog-db
+
+  blog-db:
+    image: mariadb:10.11
+    container_name: blog-db
+    platform: linux/amd64
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - MYSQL_ROOT_HOST=%
+      - MYSQL_USER=${DB_USER}
+      - MYSQL_ROOT_PASSWORD=${DB_PASSWORD}
+      - MYSQL_PASSWORD=${DB_PASSWORD}
+      - MYSQL_DATABASE=${DB_NAME}
+      - MYSQL_TCP_PORT=3306
+    command: --default-authentication-plugin=mysql_native_password --port=3306
+    volumes:
+      - blog-data:/var/lib/mysql
+    networks:
+      - blog
+
+volumes:
+  blog-data:
+  blog-uploads:
+
+networks:
+  blog:
+    driver: bridge
+  traefik:
+    external: true

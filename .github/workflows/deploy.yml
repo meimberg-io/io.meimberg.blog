@@ -1,0 +1,144 @@
+name: Deploy Blog
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  PHP_IMAGE_NAME: ${{ github.repository }}-php
+  NGINX_IMAGE_NAME: ${{ github.repository }}-nginx
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push PHP image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/php/Dockerfile.prod
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.PHP_IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.PHP_IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Nginx image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/nginx/Dockerfile.prod
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.NGINX_IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.NGINX_IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          PHP_IMAGE: ${{ env.REGISTRY }}/${{ env.PHP_IMAGE_NAME }}:${{ github.sha }}
+          NGINX_IMAGE: ${{ env.REGISTRY }}/${{ env.NGINX_IMAGE_NAME }}:${{ github.sha }}
+          APP_DOMAIN: ${{ vars.APP_DOMAIN }}
+          DB_NAME: ${{ vars.DB_NAME || 'wordpress' }}
+          DB_USER: ${{ vars.DB_USER || 'wordpress' }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          WP_ENV: production
+          WP_HOME: https://${{ vars.APP_DOMAIN }}
+          WP_SITEURL: https://${{ vars.APP_DOMAIN }}/wp
+          AUTH_KEY: ${{ secrets.AUTH_KEY }}
+          SECURE_AUTH_KEY: ${{ secrets.SECURE_AUTH_KEY }}
+          LOGGED_IN_KEY: ${{ secrets.LOGGED_IN_KEY }}
+          NONCE_KEY: ${{ secrets.NONCE_KEY }}
+          AUTH_SALT: ${{ secrets.AUTH_SALT }}
+          SECURE_AUTH_SALT: ${{ secrets.SECURE_AUTH_SALT }}
+          LOGGED_IN_SALT: ${{ secrets.LOGGED_IN_SALT }}
+          NONCE_SALT: ${{ secrets.NONCE_SALT }}
+        with:
+          host: ${{ vars.SERVER_HOST }}
+          username: ${{ vars.SERVER_USER || 'deploy' }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: PHP_IMAGE,NGINX_IMAGE,APP_DOMAIN,DB_NAME,DB_USER,DB_PASSWORD,WP_ENV,WP_HOME,WP_SITEURL,AUTH_KEY,SECURE_AUTH_KEY,LOGGED_IN_KEY,NONCE_KEY,AUTH_SALT,SECURE_AUTH_SALT,LOGGED_IN_SALT,NONCE_SALT
+          script: |
+            # Create deployment and backup directories
+            mkdir -p /srv/blog.meimberg.io
+            mkdir -p /srv/backups/blog
+            cd /srv/blog.meimberg.io
+
+            # Write .env file
+            cat > .env << EOF
+            DB_NAME=${DB_NAME}
+            DB_USER=${DB_USER}
+            DB_PASSWORD=${DB_PASSWORD}
+            DB_HOST=blog-db
+            WP_ENV=${WP_ENV}
+            WP_HOME=${WP_HOME}
+            WP_SITEURL=${WP_SITEURL}
+            AUTH_KEY=${AUTH_KEY}
+            SECURE_AUTH_KEY=${SECURE_AUTH_KEY}
+            LOGGED_IN_KEY=${LOGGED_IN_KEY}
+            NONCE_KEY=${NONCE_KEY}
+            AUTH_SALT=${AUTH_SALT}
+            SECURE_AUTH_SALT=${SECURE_AUTH_SALT}
+            LOGGED_IN_SALT=${LOGGED_IN_SALT}
+            NONCE_SALT=${NONCE_SALT}
+            EOF
+
+            # Write docker-compose file
+            cat > docker-compose.yml << 'COMPOSE_EOF'
+            ${{ steps.get-compose.outputs.compose }}
+            COMPOSE_EOF
+
+            # Substitute environment variables
+            export PHP_IMAGE="${PHP_IMAGE}"
+            export NGINX_IMAGE="${NGINX_IMAGE}"
+            export APP_DOMAIN="${APP_DOMAIN}"
+            envsubst < docker-compose.yml > docker-compose.stack.yml
+
+            # Login to registry
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # Pull and deploy
+            docker compose -f docker-compose.stack.yml pull
+            docker compose -f docker-compose.stack.yml up -d --remove-orphans
+
+            # Cleanup
+            docker image prune -af --filter "until=72h"
+
+      - name: Get compose file
+        id: get-compose
+        run: |
+          COMPOSE=$(cat docker-compose.prod.yml)
+          echo "compose<<COMPOSE_EOF" >> $GITHUB_OUTPUT
+          echo "$COMPOSE" >> $GITHUB_OUTPUT
+          echo "COMPOSE_EOF" >> $GITHUB_OUTPUT
