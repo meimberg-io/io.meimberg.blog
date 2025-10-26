@@ -65,8 +65,8 @@ jobs:
       PHP_IMAGE: ghcr.io/${{ github.repository }}-php:latest
       NGINX_IMAGE: ghcr.io/${{ github.repository }}-nginx:latest
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      DB_NAME: ${{ vars.DB_NAME || vars.DB_NAME || 'wordpress' }}
-      DB_USER: ${{ vars.DB_USER || vars.DB_USER || 'wordpress' }}
+      DB_NAME: ${{ vars.DB_NAME }}
+      DB_USER: ${{ vars.DB_USER }}
       DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
       AUTH_KEY: ${{ secrets.AUTH_KEY }}
       SECURE_AUTH_KEY: ${{ secrets.SECURE_AUTH_KEY }}
