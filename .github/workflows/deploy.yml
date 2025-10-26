@@ -59,51 +59,64 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+    env:
+      PROJECT_NAME: blog
+      APP_DOMAIN: ${{ vars.APP_DOMAIN }}
+      PHP_IMAGE: ghcr.io/${{ github.repository }}-php:latest
+      NGINX_IMAGE: ghcr.io/${{ github.repository }}-nginx:latest
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      DB_NAME: ${{ vars.DB_NAME || 'wordpress' }}
+      DB_USER: ${{ vars.DB_USER || 'wordpress' }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      AUTH_KEY: ${{ secrets.AUTH_KEY }}
+      SECURE_AUTH_KEY: ${{ secrets.SECURE_AUTH_KEY }}
+      LOGGED_IN_KEY: ${{ secrets.LOGGED_IN_KEY }}
+      NONCE_KEY: ${{ secrets.NONCE_KEY }}
+      AUTH_SALT: ${{ secrets.AUTH_SALT }}
+      SECURE_AUTH_SALT: ${{ secrets.SECURE_AUTH_SALT }}
+      LOGGED_IN_SALT: ${{ secrets.LOGGED_IN_SALT }}
+      NONCE_SALT: ${{ secrets.NONCE_SALT }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Deploy to server
-        uses: appleboy/ssh-action@v1.0.3
-        env:
-          PHP_IMAGE: ${{ env.REGISTRY }}/${{ env.PHP_IMAGE_NAME }}:${{ github.sha }}
-          NGINX_IMAGE: ${{ env.REGISTRY }}/${{ env.NGINX_IMAGE_NAME }}:${{ github.sha }}
-          APP_DOMAIN: ${{ vars.APP_DOMAIN }}
-          DB_NAME: ${{ vars.DB_NAME || 'wordpress' }}
-          DB_USER: ${{ vars.DB_USER || 'wordpress' }}
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-          WP_ENV: production
-          WP_HOME: https://${{ vars.APP_DOMAIN }}
-          WP_SITEURL: https://${{ vars.APP_DOMAIN }}/wp
-          AUTH_KEY: ${{ secrets.AUTH_KEY }}
-          SECURE_AUTH_KEY: ${{ secrets.SECURE_AUTH_KEY }}
-          LOGGED_IN_KEY: ${{ secrets.LOGGED_IN_KEY }}
-          NONCE_KEY: ${{ secrets.NONCE_KEY }}
-          AUTH_SALT: ${{ secrets.AUTH_SALT }}
-          SECURE_AUTH_SALT: ${{ secrets.SECURE_AUTH_SALT }}
-          LOGGED_IN_SALT: ${{ secrets.LOGGED_IN_SALT }}
-          NONCE_SALT: ${{ secrets.NONCE_SALT }}
+      - name: Copy docker-compose template to server
+        uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ vars.SERVER_HOST }}
           username: ${{ vars.SERVER_USER || 'deploy' }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: PHP_IMAGE,NGINX_IMAGE,APP_DOMAIN,DB_NAME,DB_USER,DB_PASSWORD,WP_ENV,WP_HOME,WP_SITEURL,AUTH_KEY,SECURE_AUTH_KEY,LOGGED_IN_KEY,NONCE_KEY,AUTH_SALT,SECURE_AUTH_SALT,LOGGED_IN_SALT,NONCE_SALT
-          script: |
-            # Create deployment and backup directories
-            mkdir -p /srv/projects/blog
-            mkdir -p /srv/backups/blog
-            cd /srv/projects/blog
+          source: "docker-compose.prod.yml"
+          target: "/srv/projects/${{ env.PROJECT_NAME }}/"
 
-            # Write .env file
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ vars.SERVER_HOST }}
+          username: ${{ vars.SERVER_USER || 'deploy' }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: PROJECT_NAME,GITHUB_TOKEN,PHP_IMAGE,NGINX_IMAGE,APP_DOMAIN,DB_NAME,DB_USER,DB_PASSWORD,AUTH_KEY,SECURE_AUTH_KEY,LOGGED_IN_KEY,NONCE_KEY,AUTH_SALT,SECURE_AUTH_SALT,LOGGED_IN_SALT,NONCE_SALT
+          script: |
+            set -e
+            
+            # Login to GitHub Container Registry
+            echo "$GITHUB_TOKEN" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            
+            # Create project and backup directories
+            mkdir -p /srv/projects/${PROJECT_NAME}
+            mkdir -p /srv/backups/${PROJECT_NAME}
+            cd /srv/projects/${PROJECT_NAME}
+            
+            # Create .env file with secrets
             cat > .env << EOF
             DB_NAME=${DB_NAME}
             DB_USER=${DB_USER}
             DB_PASSWORD=${DB_PASSWORD}
-            DB_HOST=blog-db
-            WP_ENV=${WP_ENV}
-            WP_HOME=${WP_HOME}
-            WP_SITEURL=${WP_SITEURL}
+            DB_HOST=${PROJECT_NAME}-db
+            WP_ENV=production
+            WP_HOME=https://${APP_DOMAIN}
+            WP_SITEURL=https://${APP_DOMAIN}/wp
             AUTH_KEY=${AUTH_KEY}
             SECURE_AUTH_KEY=${SECURE_AUTH_KEY}
             LOGGED_IN_KEY=${LOGGED_IN_KEY}
@@ -112,33 +125,35 @@ jobs:
             SECURE_AUTH_SALT=${SECURE_AUTH_SALT}
             LOGGED_IN_SALT=${LOGGED_IN_SALT}
             NONCE_SALT=${NONCE_SALT}
+            DISALLOW_FILE_EDIT=true
+            DISALLOW_FILE_MODS=true
             EOF
-
-            # Write docker-compose file
-            cat > docker-compose.yml << 'COMPOSE_EOF'
-            ${{ steps.get-compose.outputs.compose }}
-            COMPOSE_EOF
-
-            # Substitute environment variables
+            
+            # Substitute variables in docker-compose template
+            export PROJECT_NAME="${PROJECT_NAME}"
             export PHP_IMAGE="${PHP_IMAGE}"
             export NGINX_IMAGE="${NGINX_IMAGE}"
             export APP_DOMAIN="${APP_DOMAIN}"
-            envsubst < docker-compose.yml > docker-compose.stack.yml
-
-            # Login to registry
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-
-            # Pull and deploy
-            docker compose -f docker-compose.stack.yml pull
-            docker compose -f docker-compose.stack.yml up -d --remove-orphans
-
-            # Cleanup
-            docker image prune -af --filter "until=72h"
-
-      - name: Get compose file
-        id: get-compose
-        run: |
-          COMPOSE=$(cat docker-compose.prod.yml)
-          echo "compose<<COMPOSE_EOF" >> $GITHUB_OUTPUT
-          echo "$COMPOSE" >> $GITHUB_OUTPUT
-          echo "COMPOSE_EOF" >> $GITHUB_OUTPUT
+            
+            envsubst < docker-compose.prod.yml > docker-compose.yml
+            
+            echo "Generated docker-compose.yml:"
+            cat docker-compose.yml
+            
+            # Pull latest image and deploy
+            docker compose pull
+            docker compose up -d
+            
+            # Wait for containers to be ready
+            sleep 5
+            
+            # Verify deployment
+            if docker ps | grep -q ${PROJECT_NAME}; then
+              echo "✅ ${PROJECT_NAME} deployed successfully!"
+              echo "🌐 Accessible at: https://${APP_DOMAIN}"
+            else
+              echo "❌ Deployment failed - container not running"
+              docker logs ${PROJECT_NAME}-nginx || true
+              docker logs ${PROJECT_NAME}-php || true
+              exit 1
+            fi
