@@ -147,7 +147,7 @@ jobs:
             # Wait for containers to be ready
             sleep 5
             
-            # Verify deployment
+            # Verify the deployment
             if docker ps | grep -q ${PROJECT_NAME}; then
               echo "✅ ${PROJECT_NAME} deployed successfully!"
               echo "🌐 Accessible at: https://${APP_DOMAIN}"
