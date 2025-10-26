@@ -97,63 +97,63 @@ jobs:
           username: ${{ vars.SERVER_USER || 'deploy' }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           envs: PROJECT_NAME,GITHUB_TOKEN,PHP_IMAGE,NGINX_IMAGE,APP_DOMAIN,DB_NAME,DB_USER,DB_PASSWORD,AUTH_KEY,SECURE_AUTH_KEY,LOGGED_IN_KEY,NONCE_KEY,AUTH_SALT,SECURE_AUTH_SALT,LOGGED_IN_SALT,NONCE_SALT
-          script: |
-            set -e
-            
-            # Login to GitHub Container Registry
-            echo "$GITHUB_TOKEN" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            
-            # Create project and backup directories
-            mkdir -p /srv/projects/${PROJECT_NAME}
-            mkdir -p /srv/backups/${PROJECT_NAME}
-            cd /srv/projects/${PROJECT_NAME}
-            
-            # Create .env file with secrets
-            cat > .env << EOF
-            DB_NAME=${DB_NAME}
-            DB_USER=${DB_USER}
-            DB_PASSWORD=${DB_PASSWORD}
-            DB_HOST=${PROJECT_NAME}-db
-            WP_ENV=production
-            WP_HOME=https://${APP_DOMAIN}
-            WP_SITEURL=https://${APP_DOMAIN}/wp
-            AUTH_KEY=${AUTH_KEY}
-            SECURE_AUTH_KEY=${SECURE_AUTH_KEY}
-            LOGGED_IN_KEY=${LOGGED_IN_KEY}
-            NONCE_KEY=${NONCE_KEY}
-            AUTH_SALT=${AUTH_SALT}
-            SECURE_AUTH_SALT=${SECURE_AUTH_SALT}
-            LOGGED_IN_SALT=${LOGGED_IN_SALT}
-            NONCE_SALT=${NONCE_SALT}
-            DISALLOW_FILE_EDIT=true
-            DISALLOW_FILE_MODS=true
-            EOF
-            
-            # Substitute variables in docker-compose template
-            export PROJECT_NAME="${PROJECT_NAME}"
-            export PHP_IMAGE="${PHP_IMAGE}"
-            export NGINX_IMAGE="${NGINX_IMAGE}"
-            export APP_DOMAIN="${APP_DOMAIN}"
-            
-            envsubst < docker-compose.prod.yml > docker-compose.yml
-            
-            echo "Generated docker-compose.yml:"
-            cat docker-compose.yml
-            
-            # Pull latest image and deploy
-            docker compose pull
-            docker compose up -d
-            
-            # Wait for containers to be ready
-            sleep 5
-            
-            # Verify deployment
-            if docker ps | grep -q ${PROJECT_NAME}; then
-              echo "✅ ${PROJECT_NAME} deployed successfully!"
-              echo "🌐 Accessible at: https://${APP_DOMAIN}"
-            else
-              echo "❌ Deployment failed - container not running"
-              docker logs ${PROJECT_NAME}-nginx || true
-              docker logs ${PROJECT_NAME}-php || true
-              exit 1
-            fi
+      script: |
+        set -e
+        
+        # Login to GitHub Container Registry
+        echo "$GITHUB_TOKEN" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+        
+        # Create project and backup directories
+        mkdir -p /srv/projects/${PROJECT_NAME}
+        mkdir -p /srv/backups/${PROJECT_NAME}
+        cd /srv/projects/${PROJECT_NAME}
+        
+        # Create .env file with secrets
+        cat > .env << EOF
+DB_NAME=${DB_NAME}
+DB_USER=${DB_USER}
+DB_PASSWORD=${DB_PASSWORD}
+DB_HOST=${PROJECT_NAME}-db
+WP_ENV=production
+WP_HOME=https://${APP_DOMAIN}
+WP_SITEURL=https://${APP_DOMAIN}/wp
+AUTH_KEY=${AUTH_KEY}
+SECURE_AUTH_KEY=${SECURE_AUTH_KEY}
+LOGGED_IN_KEY=${LOGGED_IN_KEY}
+NONCE_KEY=${NONCE_KEY}
+AUTH_SALT=${AUTH_SALT}
+SECURE_AUTH_SALT=${SECURE_AUTH_SALT}
+LOGGED_IN_SALT=${LOGGED_IN_SALT}
+NONCE_SALT=${NONCE_SALT}
+DISALLOW_FILE_EDIT=true
+DISALLOW_FILE_MODS=true
+EOF
+        
+        # Substitute variables in docker-compose template
+        export PROJECT_NAME="${PROJECT_NAME}"
+        export PHP_IMAGE="${PHP_IMAGE}"
+        export NGINX_IMAGE="${NGINX_IMAGE}"
+        export APP_DOMAIN="${APP_DOMAIN}"
+        
+        envsubst < docker-compose.prod.yml > docker-compose.yml
+        
+        echo "Generated docker-compose.yml:"
+        cat docker-compose.yml
+        
+        # Pull latest image and deploy
+        docker compose pull
+        docker compose up -d
+        
+        # Wait for containers to be ready
+        sleep 5
+        
+        # Verify deployment
+        if docker ps | grep -q ${PROJECT_NAME}; then
+          echo "✅ ${PROJECT_NAME} deployed successfully!"
+          echo "🌐 Accessible at: https://${APP_DOMAIN}"
+        else
+          echo "❌ Deployment failed - container not running"
+          docker logs ${PROJECT_NAME}-nginx || true
+          docker logs ${PROJECT_NAME}-php || true
+          exit 1
+        fi
