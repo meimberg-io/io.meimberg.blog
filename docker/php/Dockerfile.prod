@@ -8,7 +8,10 @@ RUN apk add --no-cache \
     freetype-dev \
     oniguruma-dev \
     libxml2-dev \
-    icu-dev
+    icu-dev \
+    mysql-client \
+    dcron \
+    busybox-suid
 
 # Install PHP extensions
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
@@ -36,12 +39,29 @@ RUN composer install --no-dev --optimize-autoloader --no-interaction
 # Copy application
 COPY . .
 
+# Copy backup script
+COPY docker/php/backup.sh /usr/local/bin/backup.sh
+RUN chmod +x /usr/local/bin/backup.sh
+
+# Setup cron for backups (2:30 AM daily, before main Ansible backup at 3:00 AM)
+RUN echo "30 2 * * * /usr/local/bin/backup.sh >> /var/log/backup.log 2>&1" | crontab -u www-data - \
+    && mkdir -p /var/log \
+    && touch /var/log/backup.log \
+    && chown www-data:www-data /var/log/backup.log
+
 # Set permissions
 RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 755 /var/www/html
+
+# Create entrypoint to start cron and php-fpm
+COPY docker/php/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD php-fpm-healthcheck || exit 1
 
 EXPOSE 9000
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["php-fpm"]
