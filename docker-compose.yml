@@ -46,7 +46,7 @@ services:
       - php
 
   wpcli:
-    image: wordpress:cli-php8.3
+    image: wordpress:cli-php8.2
     user: "33:33"
     volumes:
       - .:/var/www/html

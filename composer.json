@@ -39,12 +39,15 @@
     "roots/bedrock-disallow-indexing": "^2.0",
     "roots/wordpress": "6.8.3",
     "roots/wp-config": "1.0.0",
-    "wpackagist-theme/twentytwentyfive": "^1.0"
+    "wpackagist-theme/twentytwentyfive": "^1.0",
+    "wpackagist-theme/astra": "*"
+
   },
   "require-dev": {
     "roave/security-advisories": "dev-latest",
     "laravel/pint": "^1.18"
   },
+  
   "config": {
     "optimize-autoloader": true,
     "preferred-install": "dist",

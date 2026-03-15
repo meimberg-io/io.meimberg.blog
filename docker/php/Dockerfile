@@ -1,4 +1,4 @@
-FROM php:8.3-fpm-alpine
+FROM php:8.2-fpm-alpine
 
 # Install system dependencies
 RUN apk add --no-cache \
@@ -23,6 +23,14 @@ RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
 
 # Set working directory
 WORKDIR /var/www/html
+
+# Configure PHP for development
+RUN { \
+    echo "error_reporting = E_ALL & ~E_DEPRECATED & ~E_STRICT"; \
+    echo "display_errors = Off"; \
+    echo "display_startup_errors = Off"; \
+    echo "log_errors = On"; \
+    } > /usr/local/etc/php/conf.d/error-reporting.ini
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \

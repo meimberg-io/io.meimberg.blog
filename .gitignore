@@ -6,6 +6,9 @@ web/app/upgrade
 web/app/uploads/*
 !web/app/uploads/.gitkeep
 
+# Composer-installed themes
+web/app/themes/astra
+
 # WordPress
 web/wp
 
